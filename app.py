@@ -1,4 +1,5 @@
 from flask import Flask, request, jsonify
+from marshmallow import Schema, fields, ValidationError
 
 app = Flask(__name__) 
 
@@ -40,17 +41,33 @@ def login():
 
 
 
+# Define schemas for data validation
+class LocationSchema(Schema):
+    timestamp = fields.DateTime(required=True)
+    latitude = fields.Float(required=True)
+    longitude = fields.Float(required=True)
+    speed = fields.Float(required=True)
+
+class DriveSessionSchema(Schema):
+    startTime = fields.DateTime(required=True)
+    locations = fields.List(fields.Nested(LocationSchema), required=True)
+    totalDistance = fields.Float(required=True)
 
 
 @app.route('/upload-session', methods=['POST'])
 def upload_json():
     if request.is_json:
         data = request.get_json()
-        //Add logic to add session to database
+        # Validate incoming data
+        try:
+            validated_data = DriveSessionSchema().load(data)
+        except ValidationError as err:
+            return jsonify(err.messages), 400
+
+        print("Data: ", data)
         return jsonify({"message": "Session received successfully", "data": data}), 200
     else:
         return jsonify({"error": "Request must be in JSON format"}), 400
-
 
 
 
@@ -60,4 +77,4 @@ def home():
 
 
 if __name__ == '__main__':
-    app.run(debug =True)
+    app.run(debug =True, host='0.0.0.0')

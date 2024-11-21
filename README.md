@@ -96,7 +96,7 @@ To get a local copy up and running follow these simple example steps.
 ### Prerequisites
 
 Ensure you have Python installed on your system. You can install it with the following command:
-* npm
+* apt
   ```sh
   sudo apt-get install python3
   ```
