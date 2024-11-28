@@ -1,3 +1,4 @@
+from scoreAlgorithm import calcDrivingScore
 from flask import Flask, request, jsonify
 from marshmallow import Schema, fields, ValidationError
 from datetime import datetime, timezone, timedelta
@@ -5,6 +6,7 @@ from functools import wraps
 from werkzeug.security import generate_password_hash, check_password_hash
 import jwt
 import db
+
 
 
 app = Flask(__name__) 
@@ -140,104 +142,73 @@ class DriveSessionSchema(Schema):
     locations = fields.List(fields.Nested(LocationSchema), required=True)
     totalDistance = fields.Float(required=True)
 
-def calcDrivingScore(locations):
-    MAX_SCORE = 100.0
-    ACCELERATION_THRESHOLD = 3.0  # m/s²
-    ACCELERATION_WEIGHT = 5.0  # Penalty per harsh acceleration/braking event
-
-    # Initialize penalties
-    total_acceleration_penalty = 0.0
-
-    # Sort locations by timestamp
-    locations_sorted = sorted(locations, key=lambda x: x['timestamp'])
-
-    speeds_mps = []  # Speeds in m/s
-    time_stamps = []  # Timestamps in seconds
-
-    for loc in locations_sorted:
-        speed_kmh = loc['speed']
-        speed_mps = speed_kmh * (1000 / 3600)  # Convert km/h to m/s
-        speeds_mps.append(speed_mps)
-
-        # Append the timestamp
-        timestamp = loc['timestamp'].timestamp()  # Convert to Unix timestamp
-        time_stamps.append(timestamp)
-
-    # Acceleration penalty
-    for i in range(1, len(speeds_mps)):
-        v1 = speeds_mps[i - 1]
-        v2 = speeds_mps[i]
-        t1 = time_stamps[i - 1]
-        t2 = time_stamps[i]
-        delta_v = v2 - v1
-        delta_t = t2 - t1
-
-        # Avoid division by zero and negative delta_t
-        if delta_t <= 0:
-            continue
-
-        acceleration = delta_v / delta_t  # m/s²
-
-        if acceleration > ACCELERATION_THRESHOLD or acceleration < -ACCELERATION_THRESHOLD:
-            total_acceleration_penalty += ACCELERATION_WEIGHT
-
-    # Calculate total penalty
-    total_penalty = total_acceleration_penalty
-
-    # Calculate final driving score
-    session_driving_score = MAX_SCORE - total_penalty
-
-    # Ensure the score is within 0 to MAX_SCORE
-    session_driving_score = max(0.0, min(MAX_SCORE, session_driving_score))
-
-    return session_driving_score
-
 
 @app.route('/upload-session', methods=['POST'])
 @token_required
 def upload_session_json(current_userId):
     if request.is_json:
         data = request.get_json()
-        # Validate incoming data
+
         try:
             validated_data = DriveSessionSchema().load(data)
         except ValidationError as err:
             return jsonify(err.messages), 400
 
-        # Extract data
-        startTime = validated_data['startTime']
-        locations = validated_data['locations']
-        totalDistance = validated_data['totalDistance']
+        locations = validated_data.get('locations', [])
+        total_distance = validated_data.get('totalDistance', 0)
+        start_time = validated_data.get('startTime')
 
-        # Ensure locations are sorted by timestamp
-        locations.sort(key=lambda x: x['timestamp'])
+        if not locations or total_distance <= 0:
+            return jsonify({"error": "Invalid session data: locations or total distance missing"}), 400
 
-        # Compute endTime from the last location's timestamp
-        endTime = locations[-1]['timestamp']
+        locations.sort(key=lambda x: x['timestamp']) #sort location by the timestamp
 
-        # Compute averageSpeed as the average of speeds from locations
-        speeds = [loc['speed'] for loc in locations]
-        averageSpeed = sum(speeds) / len(speeds)
+        end_time = locations[-1]['timestamp']
 
-        # Compute sessionDrivingScore
-        sessionDrivingScore = calcDrivingScore(locations)
+        duration_minutes = (end_time - start_time).total_seconds() / 60 #calculate the session duration in mintues
 
-        # Convert datetime objects to ISO format strings
-        startTime_str = startTime.isoformat()
-        endTime_str = endTime.isoformat()
+        average_speed = total_distance / (duration_minutes / 60) if duration_minutes > 0 else 0 # calculate average speed
 
-        # Insert the session into the database
+
+        behavior_score = 100.0  # intialize with a perfect score, and then it will go down as you make bad choices in life
+        SPEED_LIMIT = 60 
+        SPEEDING_PENALTY = 5  
+
+        for location in locations:
+            if location['speed'] > SPEED_LIMIT:
+                behavior_score -= SPEEDING_PENALTY
+
+        behavior_score = max(0, behavior_score)
+
+        #use the calcDrivingScore function found in the scoreAlgorithm file, that will return the
+        #driving score based on the session data
+        session_driving_score = calcDrivingScore(
+            locations=locations,
+            speed=average_speed,
+            distance=total_distance,
+            behavior_score=behavior_score,
+            duration_minutes=duration_minutes,
+        )
+
+        start_time_str = start_time.isoformat()
+        end_time_str = end_time.isoformat()
+
+        # insert the session stuff in the database
         db_conn = db.get_db()
         cursor = db_conn.cursor()
         cursor.execute('''
             INSERT INTO driveSessions (startTime, endTime, distance, averageSpeed, sessionDrivingScore, userID)
             VALUES (?, ?, ?, ?, ?, ?)
-        ''', (startTime_str, endTime_str, totalDistance, averageSpeed, sessionDrivingScore, current_userId))
+        ''', (start_time_str, end_time_str, total_distance, average_speed, session_driving_score, current_userId))
         db_conn.commit()
 
-        return jsonify({"message": "Session received and stored successfully"}), 200
+        return jsonify({
+            "message": "Session received and stored successfully",
+            "drivingScore": session_driving_score,
+        }), 200
     else:
         return jsonify({"error": "Request must be in JSON format"}), 400
+
 
 
 @app.route('/get-user-stats', methods=['GET'])
