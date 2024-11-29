@@ -169,7 +169,6 @@ def upload_session_json(current_userId):
 
         average_speed = total_distance / (duration_minutes / 60) if duration_minutes > 0 else 0 # calculate average speed
 
-
         behavior_score = 100.0  # intialize with a perfect score, and then it will go down as you make bad choices in life
         SPEED_LIMIT = 60 
         SPEEDING_PENALTY = 5  
@@ -180,8 +179,8 @@ def upload_session_json(current_userId):
 
         behavior_score = max(0, behavior_score)
 
-        #use the calcDrivingScore function found in the scoreAlgorithm file, that will return the
-        #driving score based on the session data
+        # use the calcDrivingScore function found in the scoreAlgorithm file, that will return the
+        # driving score based on the session data
         session_driving_score = calcDrivingScore(
             locations=locations,
             speed=average_speed,
@@ -233,6 +232,40 @@ def get_user_stats(current_userId):
         return jsonify(stats_dict), 200
     else:
         return jsonify({"error": "No stats found for user"}), 404
+
+
+# to get recent session
+@app.route('/get-recent-session', methods=['GET'])
+@token_required
+def get_recent_session(current_userId):
+    db_conn = db.get_db()
+    cursor = db_conn.cursor()
+
+    # Query to get the most recent driving session for the current user
+    cursor.execute('''
+        SELECT startTime, endTime, distance, averageSpeed, sessionDrivingScore 
+        FROM driveSessions 
+        WHERE userID = ? 
+        ORDER BY startTime DESC 
+        LIMIT 1
+    ''', (current_userId,))
+
+    session = cursor.fetchone()
+
+    if session:
+        # Convert the result to a dictionary for easy jsonify response
+        session_dict = {
+            'startTime': session['startTime'],
+            'endTime': session['endTime'],
+            'totalDistance': session['distance'],
+            'averageSpeed': session['averageSpeed'],
+            'sessionDrivingScore': session['sessionDrivingScore']
+        }
+        return jsonify(session_dict), 200
+    else:
+        return jsonify({"error": "No recent session found for user"}), 404
+
+# recent session ended
 
 
 if __name__ == '__main__':
