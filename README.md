@@ -82,6 +82,7 @@ The DriveAware Backend serves as the foundation of the DriveAware application, f
 ### Built With
 
 * [![Flask][Flask]][Flask-url]
+* [![SQLite][SQLite]][SQLite-url]
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
@@ -172,3 +173,6 @@ Project Link: [https://github.com/Nathancecixx/Group5F24](https://github.com/Nat
 
 [Flask]: https://img.shields.io/badge/Flask-000000?style=for-the-badge&logo=flask&logoColor=white
 [Flask-url]: https://flask.palletsprojects.com/en/stable/
+
+[SQLite]: https://img.shields.io/badge/SQLite-003B57?style=for-the-badge&logo=sqlite&logoColor=white
+[SQLite-url]: https://www.sqlite.org/index.html
